@@ -9,13 +9,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-struct tbm_bo_emulator
-{
-    struct vigs_drm_surface *sfc;
-
-    int is_write;
-};
-
 static tbm_bo_handle get_tbm_bo_handle(struct vigs_drm_gem *gem,
                                        int device)
 {
@@ -65,13 +58,13 @@ static void tbm_bufmgr_emulator_deinit(void *priv)
 
 static int tbm_bufmgr_emulator_bo_size(tbm_bo bo)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    return bo_emulator->sfc->gem.size;
+    return sfc->gem.size;
 }
 
 static void *tbm_bufmgr_emulator_bo_alloc(tbm_bo bo, int size, int flags)
@@ -82,15 +75,13 @@ static void *tbm_bufmgr_emulator_bo_alloc(tbm_bo bo, int size, int flags)
 
 static void tbm_bufmgr_emulator_bo_free(tbm_bo bo)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    vigs_drm_gem_unref(&bo_emulator->sfc->gem);
-
-    free(bo_emulator);
+    vigs_drm_gem_unref(&sfc->gem);
 }
 
 static void *tbm_bufmgr_emulator_bo_import(tbm_bo bo, unsigned int key)
@@ -98,7 +89,6 @@ static void *tbm_bufmgr_emulator_bo_import(tbm_bo bo, unsigned int key)
     struct vigs_drm_device *drm_dev;
     int ret;
     struct vigs_drm_surface *sfc;
-    struct tbm_bo_emulator *bo_emulator;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p, key = %u", bo, key);
 
@@ -113,31 +103,21 @@ static void *tbm_bufmgr_emulator_bo_import(tbm_bo bo, unsigned int key)
         return NULL;
     }
 
-    bo_emulator = calloc(1, sizeof(*bo_emulator));
-
-    if (!bo_emulator) {
-        TBM_EMULATOR_LOG_ERROR("calloc failed");
-        vigs_drm_gem_unref(&sfc->gem);
-        return NULL;
-    }
-
-    bo_emulator->sfc = sfc;
-
     TBM_EMULATOR_LOG_DEBUG("handle = %u", sfc->gem.handle);
 
-    return bo_emulator;
+    return sfc;
 }
 
 static unsigned int tbm_bufmgr_emulator_bo_export(tbm_bo bo)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
     int ret;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    ret = vigs_drm_gem_get_name(&bo_emulator->sfc->gem);
+    ret = vigs_drm_gem_get_name(&sfc->gem);
 
     if (ret != 0) {
         TBM_EMULATOR_LOG_ERROR("vigs_drm_gem_get_name failed: %s",
@@ -145,58 +125,58 @@ static unsigned int tbm_bufmgr_emulator_bo_export(tbm_bo bo)
         return 0;
     }
 
-    return bo_emulator->sfc->gem.name;
+    return sfc->gem.name;
 }
 
 static tbm_bo_handle tbm_bufmgr_emulator_bo_get_handle(tbm_bo bo, int device)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p, device = %d", bo, device);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    return get_tbm_bo_handle(&bo_emulator->sfc->gem, device);
+    return get_tbm_bo_handle(&sfc->gem, device);
 }
 
 static tbm_bo_handle tbm_bufmgr_emulator_bo_map(tbm_bo bo, int device, int opt)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
     tbm_bo_handle handle;
+    uint32_t saf = 0;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p, device = %d, opt = %d", bo, device, opt);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    handle = get_tbm_bo_handle(&bo_emulator->sfc->gem, device);
+    handle = get_tbm_bo_handle(&sfc->gem, device);
 
     if (!handle.ptr) {
         return handle;
     }
 
     if ((opt & TBM_OPTION_READ) != 0) {
-        vigs_drm_surface_update_vram(bo_emulator->sfc);
+        saf |= VIGS_DRM_SAF_READ;
     }
 
     if ((opt & TBM_OPTION_WRITE) != 0) {
-        bo_emulator->is_write = 1;
+        saf |= VIGS_DRM_SAF_WRITE;
     }
+
+    vigs_drm_surface_start_access(sfc, saf);
 
     return handle;
 }
 
 static int tbm_bufmgr_emulator_bo_unmap(tbm_bo bo)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    if (bo_emulator->is_write) {
-        vigs_drm_surface_update_gpu(bo_emulator->sfc);
-        bo_emulator->is_write = 0;
-    }
+    vigs_drm_surface_end_access(sfc, 1);
 
     return 1;
 }
@@ -209,14 +189,14 @@ static int tbm_bufmgr_emulator_bo_cache_flush(tbm_bo bo, int flags)
 
 static int tbm_bufmgr_emulator_bo_get_global_key(tbm_bo bo)
 {
-    struct tbm_bo_emulator *bo_emulator;
+    struct vigs_drm_surface *sfc;
     int ret;
 
     TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
 
-    bo_emulator = (struct tbm_bo_emulator*)tbm_backend_get_bo_priv(bo);
+    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
 
-    ret = vigs_drm_gem_get_name(&bo_emulator->sfc->gem);
+    ret = vigs_drm_gem_get_name(&sfc->gem);
 
     if (ret != 0) {
         TBM_EMULATOR_LOG_ERROR("vigs_drm_gem_get_name failed: %s",
@@ -224,7 +204,7 @@ static int tbm_bufmgr_emulator_bo_get_global_key(tbm_bo bo)
         return 0;
     }
 
-    return bo_emulator->sfc->gem.name;
+    return sfc->gem.name;
 }
 
 MODULEINITPPROTO(tbm_bufmgr_emulator_init);
