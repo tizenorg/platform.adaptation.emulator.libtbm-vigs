@@ -23,7 +23,7 @@ static tbm_bo_handle get_tbm_bo_handle(struct vigs_drm_gem *gem,
         bo_handle.u32 = gem->handle;
         break;
     case TBM_DEVICE_CPU:
-        ret = vigs_drm_gem_map(gem);
+        ret = vigs_drm_gem_map(gem, 1);
 
         if (ret == 0) {
             bo_handle.ptr = gem->vaddr;
