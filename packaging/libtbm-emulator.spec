@@ -5,6 +5,7 @@ License:        MIT
 Summary:        Tizen Buffer Manager - emulator backend
 Group:          System/Libraries
 Source0:        %{name}-%{version}.tar.gz
+Source1001:     libtbm-emulator.manifest
 
 BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
@@ -18,6 +19,7 @@ description: ${summary}
 
 %prep
 %setup -q
+cp %{SOURCE1001} .
 
 %build
 autoreconf -vfi
@@ -28,6 +30,8 @@ make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
+mkdir -p %{buildroot}/usr/share/license
+cp -af COPYING %{buildroot}/usr/share/license/%{name}
 
 %make_install
 
@@ -40,4 +44,7 @@ ln -s libtbm_emulator.so %{_libdir}/bufmgr/libtbm_default.so
 %postun -p /sbin/ldconfig
 
 %files
+%manifest %{name}.manifest
+%defattr(-,root,root,-)
+/usr/share/license/%{name}
 %{_libdir}/bufmgr/libtbm_*.so*
