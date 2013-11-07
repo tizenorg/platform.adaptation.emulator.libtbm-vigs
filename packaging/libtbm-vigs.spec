@@ -1,11 +1,11 @@
-Name:           libtbm-emulator
+Name:           libtbm-vigs
 Version:        0.1.0
-Release:        1
+Release:        2
 License:        MIT
 Summary:        Tizen Buffer Manager - emulator backend
 Group:          System/Libraries
 Source0:        %{name}-%{version}.tar.gz
-Source1001:     libtbm-emulator.manifest
+Source1001:     libtbm-vigs.manifest
 
 BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
