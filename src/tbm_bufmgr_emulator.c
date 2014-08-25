@@ -38,10 +38,17 @@
 
 #include <tbm_bufmgr.h>
 #include <tbm_bufmgr_backend.h>
+#include <tbm_surface.h>
 #include "vigs.h"
 #include "tbm_emulator_log.h"
 #include <string.h>
 #include <stdlib.h>
+
+static uint32_t tbm_bufmgr_emulator_color_format_list[] =
+{
+    TBM_FORMAT_ARGB8888,
+    TBM_FORMAT_XRGB8888,
+};
 
 static tbm_bo_handle get_tbm_bo_handle(struct vigs_drm_gem *gem,
                                        int device)
@@ -103,8 +110,30 @@ static int tbm_bufmgr_emulator_bo_size(tbm_bo bo)
 
 static void *tbm_bufmgr_emulator_bo_alloc(tbm_bo bo, int size, int flags)
 {
-    TBM_EMULATOR_LOG_ERROR("not supported");
-    return NULL;
+    struct vigs_drm_device *drm_dev;
+    struct vigs_drm_surface *sfc;
+    uint32_t width = 2048, height;
+    int ret;
+
+    TBM_EMULATOR_LOG_DEBUG("size = %d, flags = 0x%X", size, flags);
+
+    drm_dev = (struct vigs_drm_device*)tbm_backend_get_bufmgr_priv(bo);
+
+    height = ((uint32_t)size + (width * 4) - 1) / (width * 4);
+
+    ret = vigs_drm_surface_create(drm_dev,
+                                  width, height,
+                                  width * 4,
+                                  vigs_drm_surface_bgra8888, 0,
+                                  &sfc);
+
+    if (ret != 0) {
+        TBM_EMULATOR_LOG_ERROR("vigs_drm_suface_create failed: %s",
+                               strerror(-ret));
+        return NULL;
+    }
+
+    return sfc;
 }
 
 static void tbm_bufmgr_emulator_bo_free(tbm_bo bo)
@@ -253,6 +282,52 @@ static int tbm_bufmgr_emulator_bo_get_global_key(tbm_bo bo)
     return sfc->gem.name;
 }
 
+static int tbm_bufmgr_emulator_surface_get_plane_data(tbm_surface_h surface, int width, int height, tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset, uint32_t *pitch)
+{
+    switch(format) {
+    case TBM_FORMAT_XRGB8888:
+    case TBM_FORMAT_ARGB8888:
+        *size = width * height * 4;
+        *offset = 0;
+        *pitch = width * 4;
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int tbm_bufmgr_emulator_surface_get_size(tbm_surface_h surface, int width, int height, tbm_format format)
+{
+    switch(format) {
+    case TBM_FORMAT_XRGB8888:
+    case TBM_FORMAT_ARGB8888:
+        return width * height * 4;
+    default:
+        return 0;
+    }
+}
+
+static int tbm_bufmgr_emulator_surface_supported_format(uint32_t **formats, uint32_t *num)
+{
+    uint32_t *color_formats;
+
+    color_formats = (uint32_t*)calloc(1, sizeof(tbm_bufmgr_emulator_color_format_list));
+
+    if (!color_formats) {
+        return 0;
+    }
+
+    memcpy(color_formats,
+           tbm_bufmgr_emulator_color_format_list,
+           sizeof(tbm_bufmgr_emulator_color_format_list));
+
+    *formats = color_formats;
+    *num = sizeof(tbm_bufmgr_emulator_color_format_list)/sizeof(tbm_bufmgr_emulator_color_format_list[0]);
+
+    return 1;
+}
+
+
 MODULEINITPPROTO(tbm_bufmgr_emulator_init);
 
 static TBMModuleVersionInfo EmulatorVersRec =
@@ -305,6 +380,9 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
     backend->bo_get_global_key = tbm_bufmgr_emulator_bo_get_global_key;
     backend->bo_lock = tbm_bufmgr_emulator_bo_lock;
     backend->bo_unlock = tbm_bufmgr_emulator_bo_unlock;
+    backend->surface_get_plane_data = tbm_bufmgr_emulator_surface_get_plane_data;
+    backend->surface_get_size = tbm_bufmgr_emulator_surface_get_size;
+    backend->surface_supported_format = tbm_bufmgr_emulator_surface_supported_format;
 
     if (!tbm_backend_init(bufmgr, backend)) {
         TBM_EMULATOR_LOG_ERROR("tbm_backend_init failed");
