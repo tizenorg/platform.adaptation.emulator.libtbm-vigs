@@ -48,6 +48,9 @@ static uint32_t tbm_bufmgr_emulator_color_format_list[] =
 {
     TBM_FORMAT_ARGB8888,
     TBM_FORMAT_XRGB8888,
+    TBM_FORMAT_NV21,
+    TBM_FORMAT_NV61,
+    TBM_FORMAT_YUV420,
 };
 
 static tbm_bo_handle get_tbm_bo_handle(struct vigs_drm_gem *gem,
@@ -284,12 +287,59 @@ static int tbm_bufmgr_emulator_bo_get_global_key(tbm_bo bo)
 
 static int tbm_bufmgr_emulator_surface_get_plane_data(tbm_surface_h surface, int width, int height, tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset, uint32_t *pitch)
 {
+    *size = 0;
+    *offset = 0;
+    *pitch = 0;
+
     switch(format) {
     case TBM_FORMAT_XRGB8888:
     case TBM_FORMAT_ARGB8888:
         *size = width * height * 4;
         *offset = 0;
         *pitch = width * 4;
+        return 1;
+    case TBM_FORMAT_NV21:
+        if (plane_idx == 0) {
+            *size = width * height;
+            *offset = 0;
+            *pitch = width;
+        } else if (plane_idx == 1) {
+            *size = width * (height >> 1);
+            *offset = width * height;
+            *pitch = width;
+        } else {
+            return 0;
+        }
+        return 1;
+    case TBM_FORMAT_NV61:
+        if (plane_idx == 0) {
+            *size = width * height;
+            *offset = 0;
+            *pitch = width;
+        } else if (plane_idx == 1) {
+            *size = width * height;
+            *offset = width * height;
+            *pitch = width;
+        } else {
+            return 0;
+        }
+        return 1;
+    case TBM_FORMAT_YUV420:
+        if (plane_idx == 0) {
+            *size = width * height;
+            *offset = 0;
+            *pitch = width;
+        } else if (plane_idx == 1) {
+            *size = (width * height) >> 2;
+            *offset = width * height;
+            *pitch = width >> 1 ;
+        } else if (plane_idx == 2) {
+            *size = (width * height) >> 2;
+            *offset = (width * height) + (width  * height >> 2);
+            *pitch = width >> 1;
+        } else {
+            return 0;
+        }
         return 1;
     default:
         return 0;
@@ -298,13 +348,27 @@ static int tbm_bufmgr_emulator_surface_get_plane_data(tbm_surface_h surface, int
 
 static int tbm_bufmgr_emulator_surface_get_size(tbm_surface_h surface, int width, int height, tbm_format format)
 {
+    int bpp;
+
     switch(format) {
     case TBM_FORMAT_XRGB8888:
     case TBM_FORMAT_ARGB8888:
-        return width * height * 4;
+        bpp = 32;
+        break;
+    /* NV21 : Y/CrCb 4:2:0 */
+    /* YUV420 : YUV 4:2:0 */
+    case TBM_FORMAT_NV21:
+    case TBM_FORMAT_YUV420:
+        bpp = 12;
+        break;
+    /* NV61 : Y/CrCb 4:2:2 */
+    case TBM_FORMAT_NV61:
+        bpp = 16;
+        break;
     default:
         return 0;
     }
+    return (width * height * bpp) >> 3;
 }
 
 static int tbm_bufmgr_emulator_surface_supported_format(uint32_t **formats, uint32_t *num)
