@@ -218,6 +218,18 @@ static int tbm_bufmgr_emulator_bo_cache_flush(tbm_bo bo, int flags)
     return 1;
 }
 
+static int tbm_bufmgr_emulator_bo_lock(tbm_bo bo)
+{
+    TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
+    return 1;
+}
+
+static int tbm_bufmgr_emulator_bo_unlock(tbm_bo bo)
+{
+    TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
+    return 1;
+}
+
 static int tbm_bufmgr_emulator_bo_get_global_key(tbm_bo bo)
 {
     struct vigs_drm_surface *sfc;
@@ -275,7 +287,7 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
         goto fail;
     }
 
-    backend->flags = 0;
+    backend->flags = TBM_CACHE_CTRL_BACKEND|TBM_LOCK_CTRL_BACKEND;
     backend->priv = (void*)drm_dev;
     backend->bufmgr_deinit = tbm_bufmgr_emulator_deinit;
     backend->bo_size = tbm_bufmgr_emulator_bo_size;
@@ -288,8 +300,8 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
     backend->bo_unmap = tbm_bufmgr_emulator_bo_unmap;
     backend->bo_cache_flush = tbm_bufmgr_emulator_bo_cache_flush;
     backend->bo_get_global_key = tbm_bufmgr_emulator_bo_get_global_key;
-    backend->bo_lock = NULL;
-    backend->bo_unlock = NULL;
+    backend->bo_lock = tbm_bufmgr_emulator_bo_lock;
+    backend->bo_unlock = tbm_bufmgr_emulator_bo_unlock;
 
     if (!tbm_backend_init(bufmgr, backend)) {
         TBM_EMULATOR_LOG_ERROR("tbm_backend_init failed");
