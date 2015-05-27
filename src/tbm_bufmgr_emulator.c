@@ -174,6 +174,31 @@ static void *tbm_bufmgr_emulator_bo_import(tbm_bo bo, unsigned int key)
     return sfc;
 }
 
+static void *tbm_bufmgr_emulator_bo_import_fd(tbm_bo bo, tbm_fd key)
+{
+    struct vigs_drm_device *drm_dev;
+    struct vigs_drm_surface *sfc;
+    int ret;
+
+    TBM_EMULATOR_LOG_DEBUG("bo = %p, key = %d", bo, key);
+
+    drm_dev = (struct vigs_drm_device *)tbm_backend_get_bufmgr_priv(bo);
+
+    ret = vigs_drm_prime_import_fd(drm_dev, key, &sfc);
+
+    if (ret != 0) {
+        TBM_EMULATOR_LOG_ERROR("vigs_drm_prime_import_fd failed for key %d: %s",
+                               key,
+                               strerror(-ret));
+        return NULL;
+    }
+
+    TBM_EMULATOR_LOG_DEBUG("handle = %u", sfc->gem.handle);
+
+    return sfc;
+}
+
+
 static unsigned int tbm_bufmgr_emulator_bo_export(tbm_bo bo)
 {
     struct vigs_drm_surface *sfc;
@@ -192,6 +217,28 @@ static unsigned int tbm_bufmgr_emulator_bo_export(tbm_bo bo)
     }
 
     return sfc->gem.name;
+}
+
+tbm_fd tbm_bufmgr_emulator_bo_export_fd(tbm_bo bo)
+{
+    struct vigs_drm_device *drm_dev;
+    struct vigs_drm_surface *sfc;
+    int ret, fd = 0;
+
+    TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
+
+    drm_dev = (struct vigs_drm_device *)tbm_backend_get_bufmgr_priv(bo);
+    sfc = (struct vigs_drm_surface *)tbm_backend_get_bo_priv(bo);;
+
+    ret = vigs_drm_prime_export_fd(drm_dev, sfc, &fd);
+
+    if (ret != 0) {
+        TBM_EMULATOR_LOG_ERROR("vigs_drm_prime_export_fd failed: %s",
+                               strerror(-ret));
+        return 0;
+    }
+
+    return fd;
 }
 
 static tbm_bo_handle tbm_bufmgr_emulator_bo_get_handle(tbm_bo bo, int device)
@@ -466,7 +513,9 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
     backend->bo_alloc = tbm_bufmgr_emulator_bo_alloc;
     backend->bo_free = tbm_bufmgr_emulator_bo_free;
     backend->bo_import = tbm_bufmgr_emulator_bo_import;
+    backend->bo_import_fd = tbm_bufmgr_emulator_bo_import_fd;
     backend->bo_export = tbm_bufmgr_emulator_bo_export;
+    backend->bo_export_fd = tbm_bufmgr_emulator_bo_export_fd;
     backend->bo_get_handle = tbm_bufmgr_emulator_bo_get_handle;
     backend->bo_map = tbm_bufmgr_emulator_bo_map;
     backend->bo_unmap = tbm_bufmgr_emulator_bo_unmap;
