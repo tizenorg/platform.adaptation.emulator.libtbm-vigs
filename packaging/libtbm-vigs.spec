@@ -12,7 +12,7 @@ BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libtbm)
 
 Requires:   libtbm
-Requires:   libdrm2
+Requires:   libdrm
 
 %description
 description: ${summary}
