@@ -46,6 +46,7 @@
 
 static uint32_t tbm_bufmgr_emulator_color_format_list[] =
 {
+    TBM_FORMAT_RGB888,
     TBM_FORMAT_ARGB8888,
     TBM_FORMAT_XRGB8888,
     TBM_FORMAT_NV21,
@@ -340,6 +341,12 @@ static int tbm_bufmgr_emulator_surface_get_plane_data(tbm_surface_h surface, int
     *bo_idx = 0;
 
     switch(format) {
+    case TBM_FORMAT_RGB888:
+        *size = width * height * 3;
+        *offset = 0;
+        *pitch = width * 3;
+        *bo_idx = 0;
+        return 1;
     case TBM_FORMAT_XRGB8888:
     case TBM_FORMAT_ARGB8888:
         *size = width * height * 4;
@@ -407,6 +414,9 @@ static int tbm_bufmgr_emulator_surface_get_size(tbm_surface_h surface, int width
     int bpp;
 
     switch(format) {
+    case TBM_FORMAT_RGB888:
+        bpp = 24;
+        break;
     case TBM_FORMAT_XRGB8888:
     case TBM_FORMAT_ARGB8888:
         bpp = 32;
@@ -432,6 +442,7 @@ static int tbm_bufmgr_emulator_surface_get_num_bos (tbm_format format)
     int num = 0;
 
     switch(format) {
+    case TBM_FORMAT_RGB888:
     case TBM_FORMAT_XRGB8888:
     case TBM_FORMAT_ARGB8888:
     /* NV21 : Y/CrCb 4:2:0 */

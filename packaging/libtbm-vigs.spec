@@ -1,6 +1,6 @@
 Name:           libtbm-vigs
-Version:        0.1.0
-Release:        2
+Version:        0.1.1
+Release:        1
 License:        MIT
 Summary:        Tizen Buffer Manager - emulator backend
 Group:          System/Libraries
