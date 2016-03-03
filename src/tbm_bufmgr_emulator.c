@@ -39,10 +39,14 @@
 #include <tbm_bufmgr.h>
 #include <tbm_bufmgr_backend.h>
 #include <tbm_surface.h>
+#include <tbm_drm_helper.h>
 #include "vigs.h"
 #include "tbm_emulator_log.h"
 #include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <xf86drm.h>
 
 static uint32_t tbm_bufmgr_emulator_color_format_list[] =
 {
@@ -97,6 +101,11 @@ static void tbm_bufmgr_emulator_deinit(void *priv)
     struct vigs_drm_device *drm_dev = priv;
 
     TBM_EMULATOR_LOG_DEBUG("enter");
+
+    if (tbm_backend_is_display_server())
+        tbm_drm_helper_wl_auth_server_deinit();
+
+    close(drm_dev->fd);
 
     vigs_drm_device_destroy(drm_dev);
 }
@@ -295,13 +304,7 @@ static int tbm_bufmgr_emulator_bo_unmap(tbm_bo bo)
     return 1;
 }
 
-static int tbm_bufmgr_emulator_bo_cache_flush(tbm_bo bo, int flags)
-{
-    TBM_EMULATOR_LOG_DEBUG("bo = %p, flags = %d", bo, flags);
-    return 1;
-}
-
-static int tbm_bufmgr_emulator_bo_lock(tbm_bo bo)
+static int tbm_bufmgr_emulator_bo_lock(tbm_bo bo, int device, int opt)
 {
     TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
     return 1;
@@ -313,27 +316,7 @@ static int tbm_bufmgr_emulator_bo_unlock(tbm_bo bo)
     return 1;
 }
 
-static int tbm_bufmgr_emulator_bo_get_global_key(tbm_bo bo)
-{
-    struct vigs_drm_surface *sfc;
-    int ret;
-
-    TBM_EMULATOR_LOG_DEBUG("bo = %p", bo);
-
-    sfc = (struct vigs_drm_surface*)tbm_backend_get_bo_priv(bo);
-
-    ret = vigs_drm_gem_get_name(&sfc->gem);
-
-    if (ret != 0) {
-        TBM_EMULATOR_LOG_ERROR("vigs_drm_gem_get_name failed: %s",
-                               strerror(-ret));
-        return 0;
-    }
-
-    return sfc->gem.name;
-}
-
-static int tbm_bufmgr_emulator_surface_get_plane_data(tbm_surface_h surface, int width, int height, tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset, uint32_t *pitch, int *bo_idx)
+static int tbm_bufmgr_emulator_surface_get_plane_data(int width, int height, tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset, uint32_t *pitch, int *bo_idx)
 {
     *size = 0;
     *offset = 0;
@@ -409,56 +392,6 @@ static int tbm_bufmgr_emulator_surface_get_plane_data(tbm_surface_h surface, int
     }
 }
 
-static int tbm_bufmgr_emulator_surface_get_size(tbm_surface_h surface, int width, int height, tbm_format format)
-{
-    int bpp;
-
-    switch(format) {
-    case TBM_FORMAT_RGB888:
-        bpp = 24;
-        break;
-    case TBM_FORMAT_XRGB8888:
-    case TBM_FORMAT_ARGB8888:
-        bpp = 32;
-        break;
-    /* NV21 : Y/CrCb 4:2:0 */
-    /* YUV420 : YUV 4:2:0 */
-    case TBM_FORMAT_NV21:
-    case TBM_FORMAT_YUV420:
-        bpp = 12;
-        break;
-    /* NV61 : Y/CrCb 4:2:2 */
-    case TBM_FORMAT_NV61:
-        bpp = 16;
-        break;
-    default:
-        return 0;
-    }
-    return (width * height * bpp) >> 3;
-}
-
-static int tbm_bufmgr_emulator_surface_get_num_bos (tbm_format format)
-{
-    int num = 0;
-
-    switch(format) {
-    case TBM_FORMAT_RGB888:
-    case TBM_FORMAT_XRGB8888:
-    case TBM_FORMAT_ARGB8888:
-    /* NV21 : Y/CrCb 4:2:0 */
-    /* YUV420 : YUV 4:2:0 */
-    case TBM_FORMAT_NV21:
-    case TBM_FORMAT_YUV420:
-    /* NV61 : Y/CrCb 4:2:2 */
-    case TBM_FORMAT_NV61:
-        num = 1;
-        break;
-    default:
-        return 0;
-    }
-    return num;
-}
-
 static int tbm_bufmgr_emulator_surface_supported_format(uint32_t **formats, uint32_t *num)
 {
     uint32_t *color_formats;
@@ -479,6 +412,33 @@ static int tbm_bufmgr_emulator_surface_supported_format(uint32_t **formats, uint
     return 1;
 }
 
+static int
+tbm_bufmgr_emulator_bind_native_display (tbm_bufmgr bufmgr, void *native_display)
+{
+    struct vigs_drm_device *drm_dev;
+    char *device_name;
+    int ret = 0;
+
+    drm_dev = (struct vigs_drm_device *)tbm_backend_get_priv_from_bufmgr(bufmgr);
+
+    device_name = drmGetDeviceNameFromFd(drm_dev->fd);
+
+    if (!device_name) {
+        TBM_EMULATOR_LOG_ERROR("drmGetDeviceNameFromFd failed");
+	return 0;
+    }
+
+    ret = tbm_drm_helper_wl_auth_server_init(native_display, drm_dev->fd, device_name, 0);
+
+    if (!ret) {
+        TBM_EMULATOR_LOG_ERROR("tbm_drm_helper_wl_auth_server_init failed");
+	return 0;
+    }
+
+    free(device_name);
+
+    return 1;
+}
 
 MODULEINITPPROTO(tbm_bufmgr_emulator_init);
 
@@ -496,6 +456,7 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
     int ret = 0;
     struct vigs_drm_device *drm_dev = NULL;
     tbm_bufmgr_backend backend = NULL;
+    int drm_fd = -1;
 
     TBM_EMULATOR_LOG_DEBUG("enter");
 
@@ -503,7 +464,16 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
         return 0;
     }
 
-    ret = vigs_drm_device_create(fd, &drm_dev);
+    if (tbm_backend_is_display_server()) {
+            drm_fd = dup(fd);
+    } else {
+        if (!tbm_drm_helper_get_auth_info(&drm_fd, NULL, NULL)) {
+            TBM_EMULATOR_LOG_ERROR ("tbm_drm_helper_get_auth_info failed");
+            goto fail;
+        }
+    }
+
+    ret = vigs_drm_device_create(drm_fd, &drm_dev);
 
     if (ret != 0) {
         TBM_EMULATOR_LOG_ERROR("vigs_drm_device_create failed: %s", strerror(-ret));
@@ -517,7 +487,7 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
         goto fail;
     }
 
-    backend->flags = TBM_CACHE_CTRL_BACKEND|TBM_LOCK_CTRL_BACKEND;
+    backend->flags = TBM_USE_2_0_BACKEND;
     backend->priv = (void*)drm_dev;
     backend->bufmgr_deinit = tbm_bufmgr_emulator_deinit;
     backend->bo_size = tbm_bufmgr_emulator_bo_size;
@@ -530,14 +500,11 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
     backend->bo_get_handle = tbm_bufmgr_emulator_bo_get_handle;
     backend->bo_map = tbm_bufmgr_emulator_bo_map;
     backend->bo_unmap = tbm_bufmgr_emulator_bo_unmap;
-    backend->bo_cache_flush = tbm_bufmgr_emulator_bo_cache_flush;
-    backend->bo_get_global_key = tbm_bufmgr_emulator_bo_get_global_key;
-    backend->bo_lock = tbm_bufmgr_emulator_bo_lock;
+    backend->bo_lock2 = tbm_bufmgr_emulator_bo_lock;
     backend->bo_unlock = tbm_bufmgr_emulator_bo_unlock;
-    backend->surface_get_plane_data = tbm_bufmgr_emulator_surface_get_plane_data;
-    backend->surface_get_size = tbm_bufmgr_emulator_surface_get_size;
+    backend->surface_get_plane_data2 = tbm_bufmgr_emulator_surface_get_plane_data;
     backend->surface_supported_format = tbm_bufmgr_emulator_surface_supported_format;
-    backend->surface_get_num_bos = tbm_bufmgr_emulator_surface_get_num_bos;
+    backend->bufmgr_bind_native_display = tbm_bufmgr_emulator_bind_native_display;
 
     if (!tbm_backend_init(bufmgr, backend)) {
         TBM_EMULATOR_LOG_ERROR("tbm_backend_init failed");
@@ -555,6 +522,10 @@ fail:
 
     if (drm_dev) {
         vigs_drm_device_destroy(drm_dev);
+    }
+
+    if (drm_fd >= 0) {
+        close(drm_fd);
     }
 
     return 0;
