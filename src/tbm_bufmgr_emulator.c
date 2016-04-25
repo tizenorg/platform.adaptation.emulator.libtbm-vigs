@@ -458,6 +458,84 @@ tbm_bufmgr_emulator_bind_native_display (tbm_bufmgr bufmgr, void *native_display
     return 1;
 }
 
+static void *tbm_bufmgr_emulator_surface_bo_alloc(tbm_bo bo, int width, int height, int format, int flags, int bo_idx)
+{
+    struct vigs_drm_device *drm_dev;
+    struct vigs_drm_surface *sfc;
+    int ret;
+
+    TBM_EMULATOR_LOG_DEBUG("width = %d, height = %d, format = %x, flags = 0x%X bo_idx = %d", width, height, format, flags, bo_idx);
+
+    drm_dev = (struct vigs_drm_device*)tbm_backend_get_bufmgr_priv(bo);
+
+    if (bo_idx != 0) {
+        TBM_EMULATOR_LOG_ERROR ("Not supported bo idx");
+        return NULL;
+    }
+
+    switch(format) {
+    case TBM_FORMAT_RGB888:
+        ret = vigs_drm_surface_create(drm_dev,
+                                      width, height,
+                                      width * 3,
+                                      vigs_drm_surface_bgra8888, 0,
+                                      &sfc);
+        break;
+
+    case TBM_FORMAT_XRGB8888:
+        ret = vigs_drm_surface_create(drm_dev,
+                                      width, height,
+                                      width * 4,
+                                      vigs_drm_surface_bgra8888, 0,
+                                      &sfc);
+        break;
+
+    case TBM_FORMAT_ARGB8888:
+        ret = vigs_drm_surface_create(drm_dev,
+                                      width, height,
+                                      width * 4,
+                                      vigs_drm_surface_bgra8888, 0,
+                                      &sfc);
+        break;
+
+    case TBM_FORMAT_NV21:
+        ret = vigs_drm_surface_create(drm_dev,
+                                      width, height * 3 >> 1,
+                                      width,
+                                      vigs_drm_surface_bgra8888, 0,
+                                      &sfc);
+        break;
+
+    case TBM_FORMAT_NV61:
+        ret = vigs_drm_surface_create(drm_dev,
+                                      width, height * 2,
+                                      width,
+                                      vigs_drm_surface_bgra8888, 0,
+                                      &sfc);
+        break;
+
+    case TBM_FORMAT_YUV420:
+        ret = vigs_drm_surface_create(drm_dev,
+                                      width, height * 3 >> 1,
+                                      width,
+                                      vigs_drm_surface_bgra8888, 0,
+                                      &sfc);
+        break;
+
+    default:
+        TBM_EMULATOR_LOG_ERROR ("Not supported format");
+        return NULL;
+    }
+
+    if (ret != 0) {
+        TBM_EMULATOR_LOG_ERROR("vigs_drm_suface_create failed: %s",
+                               strerror(-ret));
+        return NULL;
+    }
+
+    return sfc;
+}
+
 MODULEINITPPROTO(tbm_bufmgr_emulator_init);
 
 static TBMModuleVersionInfo EmulatorVersRec =
@@ -534,6 +612,7 @@ int tbm_bufmgr_emulator_init(tbm_bufmgr bufmgr, int fd)
     backend->surface_get_plane_data = tbm_bufmgr_emulator_surface_get_plane_data;
     backend->surface_supported_format = tbm_bufmgr_emulator_surface_supported_format;
     backend->bufmgr_bind_native_display = tbm_bufmgr_emulator_bind_native_display;
+    backend->surface_bo_alloc = tbm_bufmgr_emulator_surface_bo_alloc;
 
     if (!tbm_backend_init(bufmgr, backend)) {
         TBM_EMULATOR_LOG_ERROR("tbm_backend_init failed");
