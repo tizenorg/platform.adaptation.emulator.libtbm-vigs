@@ -7,7 +7,6 @@ Group:          System/Libraries
 Source0:        %{name}-%{version}.tar.gz
 Source1001:     libtbm-vigs.manifest
 
-BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libtbm)
 
